@@ -1,0 +1,5 @@
+# ninja log v5
+18	1589	608798651	CMakeFiles/myPlayer.dir/src/audio.cpp.obj	c2cfe04f2e774539
+20	1599	608798651	CMakeFiles/myPlayer.dir/src/video.cpp.obj	45051ac1cb88d9b
+1	1612	608798652	CMakeFiles/myPlayer.dir/src/main.cpp.obj	a3e28d3a009163fd
+1615	2358	608798652	myPlayer.exe	3f3bb0061131bb4c
