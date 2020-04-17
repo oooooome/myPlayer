@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
    string filepath = "C:Users/50493/Desktop/testav.mp4";
   Video video(filepath);
    video.p();
-  //// audio_test(filepath);
+  // audio_test(filepath);
 
 
 
@@ -44,7 +44,6 @@ int main(int argc, char* argv[]) {
     //SDL_Window *screen;
     //SDL_Renderer *sdlRenderer;
     //SDL_Texture *sdlTexture;
-    //SDL_Rect sdlRect;
 
     //av_register_all();
     //avformat_network_init();
@@ -98,6 +97,7 @@ int main(int argc, char* argv[]) {
     //                   pCodecCtx->width, pCodecCtx->height, AV_PIX_FMT_YUV420P,
     //                   SWS_BICUBIC, NULL, NULL, NULL);
 
+
     //if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
     //  printf("Could not initialize SDL - %s\n", SDL_GetError());
     //  return -1;
@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
     //screen_w = pCodecCtx->width;
     //screen_h = pCodecCtx->height;
     //// SDL 2.0 Support for multiple windows
-    //screen = SDL_CreateWindow("Simplest ffmpeg player's Window",
+    //screen = SDL_CreateWindow("myPlayer",
     //                          SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
     //                          screen_w, screen_h, SDL_WINDOW_OPENGL);
 
@@ -121,11 +121,6 @@ int main(int argc, char* argv[]) {
     //sdlTexture = SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_IYUV,
     //                               SDL_TEXTUREACCESS_STREAMING,
     //                               pCodecCtx->width, pCodecCtx->height);
-
-    //sdlRect.x = 0;
-    //sdlRect.y = 0;
-    //sdlRect.w = screen_w;
-    //sdlRect.h = screen_h;
 
     //// SDL End----------------------
     //while (av_read_frame(pFormatCtx, packet) >= 0) {
@@ -142,13 +137,13 @@ int main(int argc, char* argv[]) {
 
 
     //      // SDL---------------------------
-    //      SDL_UpdateYUVTexture(sdlTexture, &sdlRect, pFrameYUV->data[0],
+    //      SDL_UpdateYUVTexture(sdlTexture, NULL, pFrameYUV->data[0],
     //                           pFrameYUV->linesize[0], pFrameYUV->data[1],
     //                           pFrameYUV->linesize[1], pFrameYUV->data[2],
     //                           pFrameYUV->linesize[2]);
 
     //      SDL_RenderClear(sdlRenderer);
-    //      SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &sdlRect);
+    //      SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, NULL);
     //      SDL_RenderPresent(sdlRenderer);
     //      // SDL End-----------------------
     //      // Delay 40ms
@@ -157,27 +152,10 @@ int main(int argc, char* argv[]) {
     //  }
     //  av_free_packet(packet);
     //}
-    //// flush decoder
-    //// FIX: Flush Frames remained in Codec
-    //while (1) {
-    //  ret = avcodec_decode_video2(pCodecCtx, pFrame, &got_picture, packet);
-    //  if (ret < 0) break;
-    //  if (!got_picture) break;
-    //  sws_scale(img_convert_ctx, (const unsigned char *const *)pFrame->data,
-    //            pFrame->linesize, 0, pCodecCtx->height, pFrameYUV->data,
-    //            pFrameYUV->linesize);
-    //  // SDL---------------------------
-    //  SDL_UpdateTexture(sdlTexture, &sdlRect, pFrameYUV->data[0],
-    //                    pFrameYUV->linesize[0]);
-    //  SDL_RenderClear(sdlRenderer);
-    //  SDL_RenderCopy(sdlRenderer, sdlTexture, NULL, &sdlRect);
-    //  SDL_RenderPresent(sdlRenderer);
-    //  // SDL End-----------------------
-    //  // Delay 40ms
-    //  SDL_Delay(40);
-    //}
+   
 
     //sws_freeContext(img_convert_ctx);
+
 
     //SDL_Quit();
 
