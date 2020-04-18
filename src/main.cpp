@@ -17,9 +17,9 @@ using std::string;
 
 int main(int argc, char* argv[]) {
    string filepath = "C:Users/50493/Desktop/testav.mp4";
-  Video video(filepath);
-   video.p();
-  // audio_test(filepath);
+  //Video video(filepath);
+  // video.p();
+  audio_test(filepath);
 
 
 

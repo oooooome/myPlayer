@@ -63,14 +63,13 @@ void audio_test(string filepath) {
   int64_t in_channel_layout;
   struct SwrContext *au_convert_ctx;
 
-  FILE *pFile = NULL;
-  char url[] = "C:Users/50493/Desktop/testav.mp4";
+  //char url[] = "C:Users/50493/Desktop/testav.mp4";
 
   av_register_all();
   avformat_network_init();
   pFormatCtx = avformat_alloc_context();
   // Open
-  if (avformat_open_input(&pFormatCtx, url, NULL, NULL) != 0) {
+  if (avformat_open_input(&pFormatCtx, filepath.c_str(), NULL, NULL) != 0) {
     printf("Couldn't open input stream.\n");
     return;
   }
@@ -80,7 +79,7 @@ void audio_test(string filepath) {
     return;
   }
   // Dump valid information onto standard error
-  av_dump_format(pFormatCtx, 0, url, false);
+  av_dump_format(pFormatCtx, 0, filepath.c_str(), false);
 
   // Find the first audio stream
   audioStream = -1;
@@ -120,7 +119,9 @@ void audio_test(string filepath) {
   // nb_samples: AAC-1024 MP3-1152
   int out_nb_samples = pCodecCtx->frame_size;
   AVSampleFormat out_sample_fmt = AV_SAMPLE_FMT_S16;
-  int out_sample_rate = 44100;
+  //int out_sample_rate = 44100;
+  int out_sample_rate = pCodecCtx->sample_rate;
+  cout << "sample rate: " << out_sample_rate << endl;
   int out_channels = av_get_channel_layout_nb_channels(out_channel_layout);
   // Out Buffer Size
   int out_buffer_size = av_samples_get_buffer_size(

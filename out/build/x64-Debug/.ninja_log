@@ -78,3 +78,13 @@
 12	2484	608806192	CMakeFiles/myPlayer.dir/src/video.cpp.obj	45051ac1cb88d9b
 2	2528	608806192	CMakeFiles/myPlayer.dir/src/audio.cpp.obj	c2cfe04f2e774539
 2530	3059	608806192	myPlayer.exe	3f3bb0061131bb4c
+0	39	0	clean	393dd25b1c16bf29
+1	2152	608879431	CMakeFiles/myPlayer.dir/src/main.cpp.obj	a3e28d3a009163fd
+17	2173	608879431	CMakeFiles/myPlayer.dir/src/video.cpp.obj	45051ac1cb88d9b
+14	2525	608879432	CMakeFiles/myPlayer.dir/src/audio.cpp.obj	c2cfe04f2e774539
+2528	3497	608879433	myPlayer.exe	3f3bb0061131bb4c
+0	19	0	clean	393dd25b1c16bf29
+11	1772	608879510	CMakeFiles/myPlayer.dir/src/video.cpp.obj	45051ac1cb88d9b
+8	1776	608879510	CMakeFiles/myPlayer.dir/src/audio.cpp.obj	c2cfe04f2e774539
+1	1779	608879510	CMakeFiles/myPlayer.dir/src/main.cpp.obj	a3e28d3a009163fd
+1780	2762	608879511	myPlayer.exe	3f3bb0061131bb4c

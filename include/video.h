@@ -22,16 +22,6 @@ class Video {
   int height = -1;
 
   //ffmpeg-----------------------------------------------------------
-  ////AVFormatContext* pFormatCtx = nullptr;
-  //int videoIndex;
-  ////AVCodecContext* pCodecCtx = nullptr;
-  //AVCodec* pCodec = nullptr;
-  //AVCodecContext* codec_ctx = nullptr;
-  //AVPacket* pPacket = nullptr;
-  //AVFrame* pFrame = nullptr;
-  //AVFrame* pFrameYUV = nullptr;
-  //struct SwsContext* img_convert_ctx;
-  //unsigned char* out_buffer;
 
   AVFormatContext* pFormatCtx;
   int videoIndex;
