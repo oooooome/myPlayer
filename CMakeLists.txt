@@ -112,9 +112,11 @@ message(SWSCALE_LIBRARY=${SWSCALE_LIBRARY})
 
 # Add source to this project's executable.
 add_executable (${PROJECT_NAME} 
-		src/main.cpp
-		src/audio.cpp
-		src/video.cpp)
+		 "src/main.cpp"
+		 "src/packetqueue.cpp"
+		  "src/video.cpp" 
+		  "src/audio.cpp" 
+		  "src/player.cpp")
 
 # TODO: Add tests and install targets if needed.
 
@@ -146,6 +148,15 @@ target_link_libraries( ${PROJECT_NAME}
 		${SDL_LIBRARY}
 		${SDL2_LIBRARY}
 		${SDLmain_LIBRARY}
+		#${PROJECT_SOURCE_DIR}/lib/avcodec.lib
+		#${PROJECT_SOURCE_DIR}/lib/avformat.lib
+		#${PROJECT_SOURCE_DIR}/lib/avutil.lib
+		#${PROJECT_SOURCE_DIR}/lib/avdevice.lib
+		#${PROJECT_SOURCE_DIR}/lib/avfilter.lib
+		#${PROJECT_SOURCE_DIR}/lib/postproc.lib
+		#${PROJECT_SOURCE_DIR}/lib/swresample.lib
+		#${PROJECT_SOURCE_DIR}/lib/swscale.lib
+		#${PROJECT_SOURCE_DIR}/lib/SDL2.lib
 )
 
 #add_executable (theia2-broadcaster "theia2-broadcaster.cpp" "theia2-broadcaster.h")

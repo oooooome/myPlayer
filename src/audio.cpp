@@ -1,213 +1,285 @@
 #include <iostream>
-#include <stdlib.h>
 #include <string>
-#include "audio.h"
-
-using std::cout;
-using std::string;
-using std::endl;
-
-#define __STDC_CONSTANT_MACROS
+#include <thread>
+#include <mutex>
+#include <queue>
+#include <atomic>
+#include "packetqueue.h"
+#include "video.h"
+using namespace std;
 
 extern "C" {
 #include <SDL2/SDL.h>
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
+#include "libavutil/imgutils.h"
 #include "libswresample/swresample.h"
+#include "libswscale/swscale.h"
 };
 
 
-#define MAX_AUDIO_FRAME_SIZE 192000  // 1 second of 48khz 32bit audio
+extern const int AUDIOTYPE;
 
-// Use SDL
-#define USE_SDL 1
+extern AVFormatContext* pFormatCtx;
+extern AVCodecParameters* para4audio;
+extern AVCodecContext* pCodecCtx4audio;
+extern AVFrame* frame4Audio;
+extern AVRational streamTimeBase4Audio;
+extern std::atomic<uint64_t> currentTimestamp4Audio;
 
-// Buffer:
-//|-----------|-------------|
-// chunk-------pos---len-----|
-//static Uint8 *audio_chunk;
-//static Uint32 audio_len;
-//static Uint8 *audio_pos;
+extern int audio_samples;
 
-/* The audio function callback takes the following parameters:
- * stream: A pointer to the audio buffer to be filled
- * len: The length (in bytes) of the audio buffer
- */
-void fill_audio(void *udata, Uint8 *stream, int len) {
-  // SDL 2.0
-  SDL_memset(stream, 0, len);
-  if (audio_len == 0) return;
 
-  len = (len > audio_len ? audio_len
-                         : len); /*  Mix  as  much  data  as  possible  */
 
-  SDL_MixAudio(stream, audio_pos, len, SDL_MIX_MAXVOLUME);
-  audio_pos += len;
-  audio_len -= len;
+struct AudioInfo {
+	int64_t layout;
+	int sampleRate;
+	int channels;
+	AVSampleFormat format;
+
+	AudioInfo() {
+		layout = -1;
+		sampleRate = -1;
+		channels = -1;
+		format = AV_SAMPLE_FMT_S16;
+	}
+
+	AudioInfo(int64_t l, int rate, int c, AVSampleFormat f)
+		: layout(l), sampleRate(rate), channels(c), format(f) {}
+};
+
+AudioInfo in;
+AudioInfo out;
+
+
+int allocDataBuf(AudioInfo in, AudioInfo out, uint8_t** outData, int inputSamples) {
+	int bytePerOutSample = -1;
+	switch (out.format) {
+	case AV_SAMPLE_FMT_U8:
+		bytePerOutSample = 1;
+		break;
+	case AV_SAMPLE_FMT_S16P:
+	case AV_SAMPLE_FMT_S16:
+		bytePerOutSample = 2;
+		break;
+	case AV_SAMPLE_FMT_S32:
+	case AV_SAMPLE_FMT_S32P:
+	case AV_SAMPLE_FMT_FLT:
+	case AV_SAMPLE_FMT_FLTP:
+		bytePerOutSample = 4;
+		break;
+	case AV_SAMPLE_FMT_DBL:
+	case AV_SAMPLE_FMT_DBLP:
+	case AV_SAMPLE_FMT_S64:
+	case AV_SAMPLE_FMT_S64P:
+		bytePerOutSample = 8;
+		break;
+	default:
+		bytePerOutSample = 2;
+		break;
+	}
+
+	int guessOutSamplesPerChannel = av_rescale_rnd(inputSamples, out.sampleRate, in.sampleRate, AV_ROUND_UP);
+	int guessOutSize = guessOutSamplesPerChannel * out.channels * bytePerOutSample;
+
+	guessOutSize *= 1.2; 
+
+	*outData = (uint8_t*)av_malloc(sizeof(uint8_t) * guessOutSize);
+	return guessOutSize;
 }
-//-----------------
-
-void audio_test(string filepath) {
-  AVFormatContext *pFormatCtx;
-  int i, audioStream;
-  AVCodecContext *pCodecCtx;
-  AVCodec *pCodec;
-  AVPacket *packet;
-  uint8_t *out_buffer;
-  AVFrame *pFrame;
-  SDL_AudioSpec wanted_spec;
-  int ret;
-  uint32_t len = 0;
-  int got_picture;
-  int index = 0;
-  int64_t in_channel_layout;
-  struct SwrContext *au_convert_ctx;
-
-  //char url[] = "C:Users/50493/Desktop/testav.mp4";
-
-  av_register_all();
-  avformat_network_init();
-  pFormatCtx = avformat_alloc_context();
-  // Open
-  if (avformat_open_input(&pFormatCtx, filepath.c_str(), NULL, NULL) != 0) {
-    printf("Couldn't open input stream.\n");
-    return;
-  }
-  // Retrieve stream information
-  if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
-    printf("Couldn't find stream information.\n");
-    return;
-  }
-  // Dump valid information onto standard error
-  av_dump_format(pFormatCtx, 0, filepath.c_str(), false);
-
-  // Find the first audio stream
-  audioStream = -1;
-  for (i = 0; i < pFormatCtx->nb_streams; i++)
-    if (pFormatCtx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
-      audioStream = i;
-      break;
-    }
-
-  if (audioStream == -1) {
-    printf("Didn't find a audio stream.\n");
-    return;
-  }
-
-  // Get a pointer to the codec context for the audio stream
-  pCodecCtx = pFormatCtx->streams[audioStream]->codec;
-
-  // Find the decoder for the audio stream
-  pCodec = avcodec_find_decoder(pCodecCtx->codec_id);
-  if (pCodec == NULL) {
-    printf("Codec not found.\n");
-    return;
-  }
-
-  // Open codec
-  if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0) {
-    printf("Could not open codec.\n");
-    return;
-  }
 
 
-  packet = (AVPacket *)av_malloc(sizeof(AVPacket));
-  av_init_packet(packet);
+tuple<int, int> reSample(uint8_t* dataBuffer, int dataBufferSize,
+	const AVFrame* frame) {
+	SwrContext* swr = swr_alloc_set_opts(nullptr, out.layout, out.format, out.sampleRate,
+		in.layout, in.format, in.sampleRate, 0, nullptr);
+	if (swr_init(swr)) {
+		cout << "swr_init error." << endl;
+		throw std::runtime_error("swr_init error.");
+	}
+	int outSamples = swr_convert(swr, &dataBuffer, dataBufferSize,
+		(const uint8_t**)&frame->data[0], frame->nb_samples);
+	if (outSamples <= 0) {
+		throw std::runtime_error("error: outSamples=" + outSamples);
+	}
+	int outDataSize = av_samples_get_buffer_size(NULL, out.channels, outSamples, out.format, 1);
 
-  // Out Audio Param
-  uint64_t out_channel_layout = AV_CH_LAYOUT_STEREO;
-  // nb_samples: AAC-1024 MP3-1152
-  int out_nb_samples = pCodecCtx->frame_size;
-  AVSampleFormat out_sample_fmt = AV_SAMPLE_FMT_S16;
-  //int out_sample_rate = 44100;
-  int out_sample_rate = pCodecCtx->sample_rate;
-  cout << "sample rate: " << out_sample_rate << endl;
-  int out_channels = av_get_channel_layout_nb_channels(out_channel_layout);
-  // Out Buffer Size
-  int out_buffer_size = av_samples_get_buffer_size(
-      NULL, out_channels, out_nb_samples, out_sample_fmt, 1);
+	if (outDataSize <= 0) {
+		throw std::runtime_error("error: outDataSize=" + outDataSize);
+	}
+	return { outSamples, outDataSize };
+}
 
-  out_buffer = (uint8_t *)av_malloc(MAX_AUDIO_FRAME_SIZE * 2);
-  pFrame = av_frame_alloc();
-// SDL------------------
-#if USE_SDL
-  // Init
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
-    printf("Could not initialize SDL - %s\n", SDL_GetError());
-    return;
-  }
-  // SDL_AudioSpec
-  wanted_spec.freq = out_sample_rate;
-  wanted_spec.format = AUDIO_S16SYS;
-  wanted_spec.channels = out_channels;
-  wanted_spec.silence = 0;
-  wanted_spec.samples = out_nb_samples;
-  wanted_spec.callback = fill_audio;
-  wanted_spec.userdata = pCodecCtx;
+void audio_callback(void* userdata, Uint8* stream, int len) {
 
-  if (SDL_OpenAudio(&wanted_spec, NULL) < 0) {
-    printf("can't open audio.\n");
-    return;
-  }
-#endif
+	AVPacket* packet;
+	while (true) {
 
-  // FIX:Some Codec's Context Information is missing
-  in_channel_layout = av_get_default_channel_layout(pCodecCtx->channels);
-  // Swr
+		packet = getPacketFromQueue(AUDIOTYPE);
+		if (packet == nullptr) {
+			cout << "audio finished or get some error" << endl;
+		}
+		int ret = -1;
+		ret = avcodec_send_packet(pCodecCtx4audio, packet);
+		if (ret == 0) {
+			av_packet_free(&packet);
+			packet = nullptr;
+		}
+		else if (ret == AVERROR(EAGAIN)) {
+			// buff full, can not decode any more, nothing need to do.
+			// keep the packet for next time decode.
+		}
+		else if (ret == AVERROR_EOF) {
+			cout << "[WARN]  no new AUDIO packets can be sent to it." << endl;
+		}
+		else {
+			string errorMsg = "+++++++++ ERROR avcodec_send_packet error: ";
+			errorMsg += ret;
+			cout << errorMsg << endl;
+			cout << ret << endl;
+			throw std::runtime_error(errorMsg);
+		}
 
-  au_convert_ctx = swr_alloc();
-  au_convert_ctx = swr_alloc_set_opts(au_convert_ctx, out_channel_layout,
-                                      out_sample_fmt, out_sample_rate,
-                                      in_channel_layout, pCodecCtx->sample_fmt,
-                                      pCodecCtx->sample_rate, 0, NULL);
-  swr_init(au_convert_ctx);
+		ret = avcodec_receive_frame(pCodecCtx4audio, frame4Audio);
+		if (ret >= 0) {
+			break;
+		}
+		else if (ret == AVERROR(EAGAIN)) {
+			continue;
+		}
+		else {
+			cout << "can't get frame" << endl;
+			throw std::runtime_error("can't get frame");
+		}
+	}
+	auto t = frame4Audio->pts * av_q2d(streamTimeBase4Audio) * 1000;
+	currentTimestamp4Audio.store((uint64_t)t);
+	static uint8_t* outBuffer = nullptr;
+	static int outBufferSize = 0;
 
-  // Play
-  SDL_PauseAudio(0);
+	if (outBuffer == nullptr) {
+		outBufferSize = allocDataBuf(in, out, &outBuffer, frame4Audio->nb_samples);
+	}
+	else {
+		memset(outBuffer, 0, outBufferSize);
+	}
 
-  while (av_read_frame(pFormatCtx, packet) >= 0) {
-    if (packet->stream_index == audioStream) {
-      ret = avcodec_decode_audio4(pCodecCtx, pFrame, &got_picture, packet);
-      if (ret < 0) {
-        printf("Error in decoding audio frame.\n");
-        return;
-      }
-      if (got_picture > 0) {
-        swr_convert(au_convert_ctx, &out_buffer, MAX_AUDIO_FRAME_SIZE,
-                    (const uint8_t **)pFrame->data, pFrame->nb_samples);
-#if 1
-        printf("index:%5d\t pts:%lld\t packet size:%d\n", index, packet->pts,
-               packet->size);
-#endif
+	int outSamples;
+	int outDataSize;
+	std::tie(outSamples, outDataSize) =
+		reSample(outBuffer, outBufferSize, frame4Audio);
+	audio_samples = outSamples;
+	if (outDataSize != len) {
+		cout << "WARNING: outDataSize[" << outDataSize << "] != len[" << len << "]" << endl;
+	}
 
-        index++;
-      }
+	std::memcpy(stream, outBuffer, outDataSize);
+	av_freep(&outBuffer);
+	outBuffer = nullptr;
+}
 
-#if USE_SDL
-      while (audio_len > 0)  // Wait until finish
-        SDL_Delay(1);
+void getsamples() {
+	AVPacket* packet;
+	while (true) {
 
-      // Set audio buffer (PCM data)
-      audio_chunk = (Uint8 *)out_buffer;
-      // Audio buffer length
-      audio_len = out_buffer_size;
-      audio_pos = audio_chunk;
+		packet = getPacketFromQueue(AUDIOTYPE);
+		if (packet == nullptr) {
+			cout << "audio finished or get some error" << endl;
+		}
+		int ret = -1;
+		ret = avcodec_send_packet(pCodecCtx4audio, packet);
+		if (ret == 0) {
+			av_packet_free(&packet);
+			packet = nullptr;
+		}
+		else if (ret == AVERROR(EAGAIN)) {
+			// buff full, can not decode any more, nothing need to do.
+			// keep the packet for next time decode.
+		}
+		else if (ret == AVERROR_EOF) {
+			cout << "[WARN]  no new AUDIO packets can be sent to it." << endl;
+		}
+		else {
+			string errorMsg = "+++++++++ ERROR avcodec_send_packet error: ";
+			errorMsg += ret;
+			cout << errorMsg << endl;
+			cout << ret << endl;
+			throw std::runtime_error(errorMsg);
+		}
 
-#endif
-    }
-    av_free_packet(packet);
-  }
+		ret = avcodec_receive_frame(pCodecCtx4audio, frame4Audio);
+		if (ret >= 0) {
+			break;
+		}
+		else if (ret == AVERROR(EAGAIN)) {
+			continue;
+		}
+		else {
+			cout << "can't get frame" << endl;
+			throw std::runtime_error("can't get frame");
+		}
+	}
 
-  swr_free(&au_convert_ctx);
+	static uint8_t* outBuffer = nullptr;
+	static int outBufferSize = 0;
 
-#if USE_SDL
-  SDL_CloseAudio();  // Close SDL
-  SDL_Quit();
-#endif
+	if (outBuffer == nullptr) {
+		outBufferSize = allocDataBuf(in, out, &outBuffer, frame4Audio->nb_samples);
+	}
+	else {
+		memset(outBuffer, 0, outBufferSize);
+	}
 
-  av_free(out_buffer);
-  avcodec_close(pCodecCtx);
-  avformat_close_input(&pFormatCtx);
+	int outSamples;
+	int outDataSize;
+	std::tie(outSamples, outDataSize) =
+		reSample(outBuffer, outBufferSize, frame4Audio);
+	audio_samples = outSamples;
+}
 
-  return;
+void startAudioBySDL() {
+	SDL_AudioSpec wanted_spec;
+	SDL_AudioSpec specs;
+
+
+	int64_t inLayout = para4audio->channel_layout;
+	int inChannels = para4audio->channels;
+	int inSampleRate = para4audio->sample_rate;
+	AVSampleFormat inFormate = AVSampleFormat(pCodecCtx4audio->sample_fmt);
+	in = AudioInfo(inLayout, inSampleRate, inChannels, inFormate);
+	out = AudioInfo(AV_CH_LAYOUT_STEREO, inSampleRate, 2, AV_SAMPLE_FMT_S16);
+	while (audio_samples <= 0) {
+		getsamples();
+	}
+	wanted_spec.freq = para4audio->sample_rate;
+	wanted_spec.format = AUDIO_S16SYS;
+	wanted_spec.channels = para4audio->channels;
+	wanted_spec.samples = audio_samples;  // set by output samples
+	wanted_spec.callback = audio_callback;
+	wanted_spec.userdata = nullptr;
+	SDL_setenv("SDL_AUDIO_ALSA_SET_BUFFER_SIZE", "1", 1);
+
+	SDL_AudioDeviceID audioDeviceId =
+		SDL_OpenAudioDevice(nullptr, 0, &wanted_spec, &specs, 0);  //[1]
+	if (audioDeviceId == 0) {
+		cout << "Failed to open audio device:" << SDL_GetError() << endl;
+	}
+	cout << "wanted_specs.freq:" << wanted_spec.freq << endl;
+	// cout << "wanted_specs.format:" << wanted_specs.format << endl;
+	std::cout << "wanted_specs.format: " << wanted_spec.format << endl;
+	cout << "wanted_specs.channels:" << (int)wanted_spec.channels << endl;
+	cout << "wanted_specs.samples:" << (int)wanted_spec.samples << endl;
+
+	cout << "------------------------------------------------" << endl;
+	cout << "specs.freq:" << specs.freq << endl;
+	// cout << "specs.format:" << specs.format << endl;
+	std::printf("specs.format: Ox%X\n", specs.format);
+	cout << "specs.channels:" << (int)specs.channels << endl;
+	cout << "specs.silence:" << (int)specs.silence << endl;
+	cout << "specs.samples:" << (int)specs.samples << endl;
+
+	//cout << "waiting audio play..." << endl;
+
+	SDL_PauseAudioDevice(audioDeviceId, 0);  // [2]
+
 }
