@@ -33,8 +33,6 @@ void grabPacketToQueue() {
 			AVPacket* packet = av_packet_alloc();
 			int ret = av_read_frame(pFormatCtx, packet);
 			if (ret < 0) {
-				//TODO 文件结束的处理
-
 				cout << "file finish or error" << endl;
 				break;
 			}
@@ -85,13 +83,11 @@ AVPacket* getPacketFromQueue(int type) {
 int getAqSize() {
 	std::lock_guard<std::mutex> lk(pkMutex4Audio);
 	int size = packetAudioQueue.size();
-	//	cout << "AqSize=" << size << endl;
 	return size;
 }
 
 int getVqSize() {
 	std::lock_guard<std::mutex> lk(pkMutex4Video);
 	int size = packetVideoQueue.size();
-	//	cout << "VqSize:" << size << endl;
 	return size;
 }
